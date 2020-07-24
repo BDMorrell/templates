@@ -2,6 +2,7 @@
 import readline
 from pathlib import Path
 from collections import defaultdict
+import importlib
 
 here = Path(__file__).parent.absolute()
 
@@ -29,25 +30,25 @@ class Collection:
         self.name = getDefaultName(path, name)
         self.templates = [Template(template, self.name+'/'+template.name) for template in getSubdirs(path)]
 
-def removeDuplicatesFromListDict(ld):
-    return dict([(key, ld[key]) for key in ld if len(ld[key]) == 1])
-
 class TemplateLibrary:
     def __init__(self, collectionPaths):
         self.collections = [Collection(path) for path in collectionPaths]
         self.templates = [template for collection in self.collections for template in collection.templates]
 
     def getFrienlyListDict(self):
-        longName = defaultdict(list)
-        shortName = defaultdict(list)
+        names = defaultdict(list)
         for t in self.templates:
-            longName[t.name].append(t)
-            shortName[t.shortName].append(t)
-        if len(longName) != len(self.templates):
-            print("Warning: there are insertecting collections of templates!")
-        niceDict = removeDuplicatesFromListDict(shortName)
-        niceDict.update(longName)
-        return niceDict
+            names[t.name].append(t)
+            names[t.shortName].append(t)
+        return names
+
+def getCollectionPaths():
+    collections = [here / 'default']
+    collections.extend(getSubdirs(here / 'collections'))
+    return collections
+
+def getTemplateLibrary():
+    return TemplateLibrary(getCollectionPaths())
 
 def readyAutocomplete(hints):
     readline.parse_and_bind("tab: complete")
@@ -59,15 +60,9 @@ def readyAutocomplete(hints):
             return None
     readline.set_completer(completer)
 
-def getCollectionPaths():
-    collections = [here / 'default']
-    collections.extend(getSubdirs(here / 'collections'))
-    return collections
-
-def makeTemplateLibrary():
-    return TemplateLibrary(getCollectionPaths())
-
 def promptFromDictionary(Dict, prompt=''):
+    if len(Dict) == 0:
+        raise ValueError("Can not prompt from empty dictionary")
     selection = None
     readyAutocomplete(Dict)
     while selection is None:
@@ -78,9 +73,8 @@ def promptFromDictionary(Dict, prompt=''):
             print('that is not a valid choice')
     return selection
 
-def main():
-    lib = makeTemplateLibrary()
-    inputDict = lib.getFrienlyListDict()
+def promptForTemplate(templateLibrary):
+    inputDict = templateLibrary.getFrienlyListDict()
     selectedList = promptFromDictionary(inputDict, "template? ")
     selection = None
     if len(selectedList) == 1:
@@ -90,8 +84,14 @@ def main():
         options = dict([(str(item.path.relative_to(here)), item) for item in selectedList])
         print([str(key) for key in options])
         selection = promptFromDictionary(options, "Which one do you want? ")
-    print(selection)
-    print(selection.path)
+    return selection
+
+def main():
+    templateLib = getTemplateLibrary()
+    template = promptForTemplate(templateLib)
+    print(template.path)
+    module = importlib.import_module(template.path, "templateRules")
+    print(module)
 
 if __name__ == "__main__":
     main()
